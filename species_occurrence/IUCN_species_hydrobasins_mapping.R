@@ -131,6 +131,7 @@ All_species <- rbind(Odonate_Sayer_data,
                      Mammal_Sayer_data,
                      Bird_Sayer_data)
 
+write.csv(All_species, '../../results/species_occurrence/species_list.csv', row.names=FALSE)
 
 #########################################################################################################
 ## plotting species richness
@@ -257,9 +258,6 @@ Threats_birds <-
 # Threats_mammals %>% 
 #   group_by(stressName) %>% 
 #   summarise(N=n())
-
-
-
 
 
 #########################################################################################################
@@ -463,6 +461,20 @@ ggsave(Plot_Percent_Range_fish,
   filename='../../results/species_occurrence/plots/percent_ranges_plots_fish.pdf', height=6, width=6
 )
 
+###########################################################################################################
+## collating data together for experimental output dataset
+P_all <- unique(PR_all)
+PR_all %>%
+  group_by(SCI_NAME) %>%
+  summarise(N=n()) %>% 
+  arrange(desc(N))
+PR_all <- PR_all[, -c(69, 7)]
+
+colnames(PR_all)[1] <- 'scientificName'
+Out <- left_join(unique(PR_all), Status)
+Out <- Out[, c('Group', 'scientificName', 'redlistCategory', 'percent_range')]
+row.names(Out) <- c(1:nrow(Out))
+write.csv(Out, file ='../../results/species_occurrence/biodiversity_data/Out_species_percent_RL.csv', row.names=FALSE)
 
 # #########################################################################################################
 # ## intersecting IUCN data mine sites with hydrobasins level 10
