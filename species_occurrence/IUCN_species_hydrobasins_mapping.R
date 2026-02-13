@@ -3,7 +3,7 @@ library(terra)
 library(ggplot2)
 library(ggpubr)
 
-## NEED TO CHANGE THE SCRIPT TO USE PFAF_ID  
+## Mapping species found in the pilot's study region with IUCN range maps 
 
 #########################################################################################################
 ## getting hydrobasin and river data for our study region and mine polygons

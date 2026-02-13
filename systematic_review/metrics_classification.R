@@ -786,7 +786,7 @@ Tax_studies %>%
   as.data.frame() 
 Tax_studies$Country_reclass <- NA
 Tax_studies$Country_reclass[grepl('Australia', Tax_studies$Country.Continent)] <- 'Australia'
-Tax_studies$Country_reclass[grepl('Bolivia', Tax_studies$Country.Continent)] <- 'Australia'
+Tax_studies$Country_reclass[grepl('Bolivia', Tax_studies$Country.Continent)] <- 'Bolivia'
 Tax_studies$Country_reclass[grepl(' Bolivia, Argentina, Paraguay', Tax_studies$Country.Continent)] <- ' Bolivia, Argentina, Paraguay'
 Tax_studies$Country_reclass[grepl('Brazil', Tax_studies$Country.Continent)] <- 'Brazil'
 Tax_studies$Country_reclass[grepl('Canada', Tax_studies$Country.Continent)] <- 'Canada'
