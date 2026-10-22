@@ -1,0 +1,1 @@
+Joint Research Centre (JRC) Global Surface Water (GSW). Water occurrence. Version 1.4 (1984–2021). Values are the percentage of valid observations in which surface water was present, from 0 to 100. Pixels where water was never detected are masked.
