@@ -1,0 +1,32 @@
+# environment based on openeo UDF "python" runtime, version 3.11
+# https://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python
+name: LEON-P1
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - geopandas=1.0.1
+  - netCDF4=1.7.3
+  - numpy=2.3.3
+  # - openeo=0.46.0a1.dev20250928+830
+  - pandas=2.3.3
+  # - pyproj=3.4.1
+  # - rasterio=1.3.11
+  - scipy=1.16.2
+  # - shapely=2.1.2
+  - xarray=2024.7.0
+
+  # not in UDF environment
+  - openeo>=0.51.0
+  - ipykernel
+  - pyarrow  # to read parquet
+  - rioxarray
+  # - h5netcdf
+  - matplotlib
+  - pystac
+  - jsonschema
+  - rio-stac
+  - rio-cogeo
+  - s3cmd
+  - nbstripout
