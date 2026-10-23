@@ -1,11 +1,11 @@
-"""Build a bounding-box polygon for each AOI zone.
+"""Build AOI GeoJSON from the upstream and downstream shapefile zips.
 
-1. Read each zip. Each shapefile must contain one feature.
-2. Reproject that feature to EPSG:4326.
-3. Replace the geometry with its bounding-box polygon. Properties are kept.
-4. Write one GeoJSON rectangle per zone.
-5. Merge those rectangles into upstream_and_downstream.geojson.
-6. Write an openEO bounding box of that collection to aoi_bbox.json.
+Based on email correspondence 2026-10-22
+
+> For the WQRI calculation, we buffered these lines to create polygons 
+> defining the areas from which Sentinel-2 water pixels could be extracted. 
+> We used a 500 m buffer with flat end caps to preserve the upstream and 
+> downstream limits of each reach.
 """
 
 import json
@@ -13,8 +13,9 @@ import json
 import geopandas as gpd
 import pandas as pd
 
+BUFFER_M = 500
 UPSTREAM_AND_DOWNSTREAM_NAME = "upstream_and_downstream.geojson"
-AOI_BBOX_NAME = "aoi_bbox.json"
+BBOX_NAME = "aoi_bbox.json"
 
 
 def write_geojson(gdf: gpd.GeoDataFrame, name: str) -> None:
@@ -31,36 +32,44 @@ def write_geojson(gdf: gpd.GeoDataFrame, name: str) -> None:
         f.write("\n")
 
 
-def shp_zip_to_bbox(zip_name: str, feature_name: str) -> str:
-    """Write one zone as an EPSG:4326 bounding-box polygon.
+def shp_zip_to_geojson(zip_name: str, feature_name: str) -> tuple[str, str]:
+    """Write a zone and its buffered copy as GeoJSON.
+
+    The buffer is applied in the shapefile's CRS so that `BUFFER_M` is in
+    metres.
 
     Args:
         zip_name: Zipped shapefile containing one zone feature.
-        feature_name: Value stored in the output feature's `name` property,
+        feature_name: Value stored in each output feature's `name` property,
             so the zones can be identified after they are merged.
 
     Returns:
-        The bounding-box GeoJSON filename.
+        A tuple of the zone GeoJSON filename and the buffered GeoJSON
+        filename.
 
     Raises:
         ValueError: If the shapefile does not contain exactly one feature, or
-            it has no CRS.
+            its CRS is not projected.
     """
     # One .shp at the zip root; geopandas/pyogrio reads that directly.
     gdf = gpd.read_file(zip_name)
     if len(gdf) != 1:
         raise ValueError(f"{zip_name}: expected 1 feature, found {len(gdf)}")
-    if gdf.crs is None:
-        raise ValueError(f"{zip_name}: shapefile has no CRS")
-
-    gdf = gdf.to_crs("EPSG:4326")
-    gdf["name"] = feature_name
-    gdf.geometry = gdf.geometry.envelope
+    if not gdf.crs.is_projected:
+        raise ValueError(f"{zip_name}: CRS {gdf.crs} is not projected; can't buffer in metres")
 
     stem = zip_name.removesuffix(".zip").removesuffix(".shp")
-    out_name = f"{stem}_bbox.geojson"
+    gdf["name"] = feature_name
+    out_name = f"{stem}.geojson"
+    buffered_name = f"{stem}_buffered_{BUFFER_M}m.geojson"
+
     write_geojson(gdf, out_name)
-    return out_name
+
+    buffered = gdf.copy()
+    buffered.geometry = gdf.buffer(BUFFER_M, cap_style="flat")
+    write_geojson(buffered, buffered_name)
+
+    return out_name, buffered_name
 
 
 def merge_geojsons(paths: list[str], out_name: str) -> gpd.GeoDataFrame:
@@ -99,18 +108,24 @@ def write_bbox(gdf: gpd.GeoDataFrame) -> str:
         "north": north,
         "crs": f"EPSG:{gdf.crs.to_epsg()}",
     }
-    with open(AOI_BBOX_NAME, "w") as f:
+    with open(BBOX_NAME, "w") as f:
         json.dump(bbox, f, indent=2)
         f.write("\n")
-    return AOI_BBOX_NAME
+    return BBOX_NAME
 
 
 def main() -> None:
-    upstream = shp_zip_to_bbox("upstream_0_15km.shp.zip", "upstream control zone")
-    downstream = shp_zip_to_bbox("downstream_0_15km.zip", "downstream influence zone")
-    print(upstream)
-    print(downstream)
-    merged = merge_geojsons([upstream, downstream], UPSTREAM_AND_DOWNSTREAM_NAME)
+    upstream, upstream_buffered = shp_zip_to_geojson(
+        "upstream_0_15km.shp.zip", "upstream control zone"
+    )
+    downstream, downstream_buffered = shp_zip_to_geojson(
+        "downstream_0_15km.zip", "downstream influence zone"
+    )
+    print(f"{upstream}, {upstream_buffered}")
+    print(f"{downstream}, {downstream_buffered}")
+    merged = merge_geojsons(
+        [upstream_buffered, downstream_buffered], UPSTREAM_AND_DOWNSTREAM_NAME
+    )
     print(f"upstream and downstream -> {UPSTREAM_AND_DOWNSTREAM_NAME}")
     print(f"bbox -> {write_bbox(merged)}")
 
