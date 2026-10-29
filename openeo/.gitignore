@@ -1,0 +1,6 @@
+__pycache__/
+output*/
+*.tif
+*.nc
+logs.json
+s3cfg.txt
