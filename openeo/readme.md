@@ -1,13 +1,88 @@
 # LEON P1 OpenEO Implementation
 
-Assume that user has already defined 
+This is an openEO implementation of the LEON Pilot 1 workflow,
+based on the Algorithm Theoretical Baseline Document,
+and the reference Google Earth Engine scripts.
 
-- downstream influence zone
-- upstream influence zone
+The openEO implementation is encapsulated in a single User Defined Process (UDP).
+This does the majority of the EO data processing,
+bracketed by some light pre and post processing.
 
-as GeoJSON polygons, based on the HydroRIVERS and HydroBASINS datasets.
+# Repository Structure
 
-# create conda environment
+```
+openeo
+├── AOI
+│   ├── downstream_0_15km.zip
+│   ├── shp_to_buffered_geojson.py
+│   └── upstream_0_15km.shp.zip
+├── NDTI-hotspots
+│   ├── run-udp.ipynb
+│   ├── script.ipynb
+│   ├── udp.ipynb
+│   ├── udp.json
+│   ├── utils -> ../utils/
+│   └── udf -> ../udf/
+├── WQRI.ipynb
+├── aux-data
+│   └── JRC-GSW-VER4-0
+│       ├── STAC
+│       │   ├── collection.json
+│       │   └── items
+│       │       └── ...
+│       ├── description.txt
+│       ├── readme.md
+│       └── stac-ify.py
+├── environment.yml
+├── observations.md
+├── openEO-workarounds.md
+├── readme.md
+├── test-udf
+│   └── ...
+├── udf
+│   └── ...
+└── utils
+    └── ...
+```
+
+## Step 1: `AOI/`
+
+Here we preprocess the upstream and downstream river multilinestrings
+into GeoJSON polygons.
+
+These are combined into a single GeoJSON feature collection,
+with each feature having a `name` property - either `"upstream control zone"` or `"downstream influence zone"`.
+
+This feature collection is an input to the openEO User Defined Process (UDP).
+
+## Step 2: `NDTI-hotspots/`
+
+This is the openEO workflow.
+
+- `udp.ipynb` — builds the User Defined Process
+- `udp.json` — exported process graph (this is the serialised UDP)
+- `script.ipynb` — the same workflow as an inline script, which returns intermediate results
+- `run-udp.ipynb` — runs the UDP against the OpenEO backend
+
+## Step 3: `WQRI.ipynb`
+
+This notebook generates the Water Quality Risk Index (WQRI),
+from the results from the openEO User Defined Process (UDP).
+
+## `aux-data/`
+
+This directory describes the auxiliary data used by the openEO workflow.
+
+## `udf` and `test-udf`
+
+These directories contain the User Defined Functions (UDFs) used by the openEO workflow.
+
+- `udf` — the UDFs
+- `test-udf` — the unit tests for the UDFs
+
+# Quickstart
+
+## create conda environment
 
 ```bash
 cd openeo
@@ -32,7 +107,7 @@ conda env update -f environment.yml
 nbstripout --install
 ```
 
-# run unit tests
+## run unit tests
 
 for the UDFs
 
