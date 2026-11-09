@@ -34,9 +34,8 @@ This seems to work most of the time, but intermediate results must be checked ma
 
 ## `sum` behaves like `XOR`
 
-`sum` is applied as bitwise XOR when the cube dtype is not a real
-boolean (common after `merge_cubes`). There is no client-side way to
-inspect the backend dtype.
+`sum` is applied as bitwise XOR when the cube dtype is boolean.
+There is no client-side way to inspect the backend dtype.
 
 - https://forum.dataspace.copernicus.eu/t/aggregate-temporal-period-with-sum-behaves-like-xor/5667
 
