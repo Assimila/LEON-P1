@@ -1,0 +1,2685 @@
+{
+  "process_graph": {
+    "loadcollection1": {
+      "process_id": "load_collection",
+      "arguments": {
+        "bands": [
+          "B03",
+          "B04",
+          "B05",
+          "SCL"
+        ],
+        "id": "SENTINEL2_L2A",
+        "spatial_extent": {
+          "from_parameter": "upstream_and_downstream"
+        },
+        "temporal_extent": {
+          "from_parameter": "temporal_extent"
+        }
+      }
+    },
+    "filterbands1": {
+      "process_id": "filter_bands",
+      "arguments": {
+        "bands": [
+          "B03",
+          "B04",
+          "B05"
+        ],
+        "data": {
+          "from_node": "loadcollection1"
+        }
+      }
+    },
+    "reducedimension1": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "loadcollection1"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement1": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 3
+              }
+            },
+            "eq1": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement1"
+                },
+                "y": 3
+              }
+            },
+            "eq2": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement1"
+                },
+                "y": 8
+              }
+            },
+            "or1": {
+              "process_id": "or",
+              "arguments": {
+                "x": {
+                  "from_node": "eq1"
+                },
+                "y": {
+                  "from_node": "eq2"
+                }
+              }
+            },
+            "eq3": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement1"
+                },
+                "y": 9
+              }
+            },
+            "or2": {
+              "process_id": "or",
+              "arguments": {
+                "x": {
+                  "from_node": "or1"
+                },
+                "y": {
+                  "from_node": "eq3"
+                }
+              }
+            },
+            "eq4": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement1"
+                },
+                "y": 10
+              }
+            },
+            "or3": {
+              "process_id": "or",
+              "arguments": {
+                "x": {
+                  "from_node": "or2"
+                },
+                "y": {
+                  "from_node": "eq4"
+                }
+              }
+            },
+            "eq5": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement1"
+                },
+                "y": 11
+              }
+            },
+            "or4": {
+              "process_id": "or",
+              "arguments": {
+                "x": {
+                  "from_node": "or3"
+                },
+                "y": {
+                  "from_node": "eq5"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "mask1": {
+      "process_id": "mask",
+      "arguments": {
+        "data": {
+          "from_node": "filterbands1"
+        },
+        "mask": {
+          "from_node": "reducedimension1"
+        }
+      }
+    },
+    "loadstac1": {
+      "process_id": "load_stac",
+      "arguments": {
+        "bands": [
+          "occurrence"
+        ],
+        "spatial_extent": {
+          "from_parameter": "upstream_and_downstream"
+        },
+        "url": "https://raw.githubusercontent.com/Assimila/LEON-P1/refs/heads/openeo/openeo/aux-data/JRC-GSW-VER4-0/STAC/collection.json"
+      }
+    },
+    "dropdimension1": {
+      "process_id": "drop_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "loadstac1"
+        },
+        "name": "t"
+      }
+    },
+    "apply1": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "dropdimension1"
+        },
+        "process": {
+          "process_graph": {
+            "runudf1": {
+              "process_id": "run_udf",
+              "arguments": {
+                "context": {
+                  "operator": "gte",
+                  "argument": {
+                    "from_parameter": "water_occurrence_threshold"
+                  }
+                },
+                "data": {
+                  "from_parameter": "x"
+                },
+                "runtime": "Python",
+                "udf": "\"\"\"\nThis is an openEO UDF (User Defined Function).\nhttps://open-eo.github.io/openeo-python-client/udf.html\n\nIt targets the \"python\" runtime, version 3.11.\nhttps://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python\n\"\"\"\n\nfrom typing import TypedDict\n\nimport numpy as np\nimport xarray as xr\n\nfrom openeo.udf import inspect\n\nLOG_CODE = \"binary_operator\"\n\n\nclass Context(TypedDict):\n    operator: str\n    argument: float | int\n\n\nOPERATORS = {\n    \"gte\": np.greater_equal,\n    \"gt\": np.greater,\n    \"lte\": np.less_equal,\n    \"lt\": np.less,\n}\n\n\ndef apply_datacube(cube: xr.DataArray, context: Context) -> xr.DataArray:\n    \"\"\"\n    Apply a binary (2 argument) operator to a cube.\n\n    Example:\n\n    ```\n    context.operator = \"gte\"\n    context.argument = 30\n    result = (cube >= 30)\n    ```\n\n    Why not just use native openEO processes?\n    Because there seems to be a bug related to Parameters.\n    https://forum.dataspace.copernicus.eu/t/udp-parameter-not-applied/5282/3\n\n    Arguments:\n        cube: xarray DataArray\n        context: user-provided arguments.\n    \"\"\"\n    # parse and validate context\n    operator_name = context[\"operator\"]\n    try:\n        operator = OPERATORS[operator_name]\n    except KeyError:\n        raise ValueError(f\"Invalid operator: {operator_name}\")\n\n    argument = context[\"argument\"]\n    if not isinstance(argument, float | int):\n        raise TypeError(f\"Invalid argument: {argument}\")\n\n    inspect(\n        message=f\"applying {operator_name}(cube, {argument})\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    return operator(cube, argument)\n",
+                "version": "3.11"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "convertdatatype1": {
+      "process_id": "convert_data_type",
+      "arguments": {
+        "data": {
+          "from_node": "apply1"
+        },
+        "data_type": "bool"
+      }
+    },
+    "reducedimension2": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "convertdatatype1"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement2": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 0
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "resamplecubespatial1": {
+      "process_id": "resample_cube_spatial",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension2"
+        },
+        "method": "near",
+        "target": {
+          "from_node": "mask1"
+        }
+      }
+    },
+    "apply2": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "resamplecubespatial1"
+        },
+        "process": {
+          "process_graph": {
+            "eq6": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "x"
+                },
+                "y": 0
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "mask2": {
+      "process_id": "mask",
+      "arguments": {
+        "data": {
+          "from_node": "mask1"
+        },
+        "mask": {
+          "from_node": "apply2"
+        }
+      }
+    },
+    "reducedimension3": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "mask2"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement3": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 1
+              }
+            },
+            "arrayelement4": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 0
+              }
+            },
+            "normalizeddifference1": {
+              "process_id": "normalized_difference",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement3"
+                },
+                "y": {
+                  "from_node": "arrayelement4"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "adddimension1": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension3"
+        },
+        "label": "NDTI",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "reducedimension4": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "mask2"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement5": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 2
+              }
+            },
+            "arrayelement6": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 1
+              }
+            },
+            "normalizeddifference2": {
+              "process_id": "normalized_difference",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement5"
+                },
+                "y": {
+                  "from_node": "arrayelement6"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "adddimension2": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension4"
+        },
+        "label": "NDCI",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "mergecubes1": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "adddimension1"
+        },
+        "cube2": {
+          "from_node": "adddimension2"
+        }
+      }
+    },
+    "aggregatetemporalperiod1": {
+      "process_id": "aggregate_temporal_period",
+      "arguments": {
+        "data": {
+          "from_node": "mergecubes1"
+        },
+        "period": "month",
+        "reducer": {
+          "process_graph": {
+            "median1": {
+              "process_id": "median",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "applydimension1": {
+      "process_id": "apply_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "aggregatetemporalperiod1"
+        },
+        "dimension": "t",
+        "process": {
+          "process_graph": {
+            "runudf2": {
+              "process_id": "run_udf",
+              "arguments": {
+                "context": {
+                  "target_band": "NDTI",
+                  "baseline_start": {
+                    "from_parameter": "baseline_start"
+                  },
+                  "baseline_end": {
+                    "from_parameter": "baseline_end"
+                  },
+                  "std_min": 0.0001
+                },
+                "data": {
+                  "from_parameter": "data"
+                },
+                "runtime": "Python",
+                "udf": "\"\"\"\nThis is an openEO UDF (User Defined Function).\nhttps://open-eo.github.io/openeo-python-client/udf.html\n\nIt targets the \"python\" runtime, version 3.11.\nhttps://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python\n\"\"\"\n\nimport warnings\nfrom typing import TypedDict\n\nimport numpy as np\nimport pandas as pd\nimport xarray as xr\nfrom openeo.metadata import Band, CollectionMetadata\n\nfrom openeo.udf import inspect\n\nLOG_CODE = \"monthly_climatology\"\n\n\nclass Context(TypedDict):\n    target_band: str\n\n    # baseline period over which to compute the climatology\n    # inclusive\n    # iso8601 date string\n    baseline_start: str\n    baseline_end: str\n\n    # replace small standard deviations with this value\n    # e.g. where there is only a single observation in the baseline period\n    std_min: float\n\n\nBAND_DIM = \"bands\"\nCALENDAR_MONTHS = np.arange(1, 13)\n\n\ndef _as_datetime_index(t_index: pd.Index) -> pd.DatetimeIndex:\n    if isinstance(t_index, pd.DatetimeIndex):\n        return t_index\n    return pd.to_datetime(t_index)\n\n\ndef _calendar_months(t_coord: xr.DataArray) -> xr.DataArray:\n    \"\"\"Calendar month (1-12) for each time label.\n\n    Returns:\n        DataArray with dims [t], aligned to `t_coord`.\n    \"\"\"\n    months = _as_datetime_index(t_coord.indexes[\"t\"]).month\n    return xr.DataArray(months, coords={\"t\": t_coord}, dims=\"t\")\n\n\ndef _monthly_climatology(\n    baseline: xr.DataArray, std_min: float\n) -> tuple[xr.DataArray, xr.DataArray]:\n    \"\"\"Per calendar month: median and population std over baseline timesteps.\n\n    Arguments:\n        baseline: Single-band cube, typically [x, y, t].\n        std_min: Lower bound applied to std where baseline samples exist.\n\n    Returns:\n        (clim_median, clim_std): two DataArrays with the same dimensionality.\n        We drop the `t` dimension, and add a `month` dimension with 12 months.\n        Months with no baseline timestep (or only NaN values) are NaN.\n    \"\"\"\n    month = _calendar_months(baseline.coords[\"t\"]).rename(\"month\")\n    by_month = baseline.assign_coords(month=month).groupby(\"month\")\n\n    clim_median = by_month.median(dim=\"t\", skipna=True)\n\n    # For an all-NaN month, numpy logs:\n    # RuntimeWarning: Degrees of freedom <= 0 for slice.\n    with warnings.catch_warnings():\n        warnings.filterwarnings(\n            \"ignore\",\n            message=\"Degrees of freedom <= 0 for slice.\",\n            category=RuntimeWarning,\n        )\n        clim_std = by_month.std(dim=\"t\", skipna=True, ddof=0)\n\n    # ensure we have all 12 months\n    clim_median = clim_median.reindex(month=CALENDAR_MONTHS)\n    clim_std = clim_std.reindex(month=CALENDAR_MONTHS)\n\n    clim_std = clim_std.clip(min=std_min)\n\n    return clim_median, clim_std\n\n\ndef _broadcast_to_timesteps(\n    clim: xr.DataArray, t_coord: xr.DataArray\n) -> xr.DataArray:\n    \"\"\"Map per-month climatology onto every time step.\n\n    Arguments:\n        clim: Climatology field with dims [x, y, month]\n        t_coord: Time coordinate for the output series (typically all timesteps in the cube).\n\n    Returns:\n        DataArray with dims [x, y, t]. Each label along `t` gets the clim value for\n        its calendar month (January timesteps all share the month=1 climatology).\n    \"\"\"\n    month_of_t = _calendar_months(t_coord)\n    return clim.sel(month=month_of_t)\n\n\ndef apply_datacube(cube: xr.DataArray, context: Context) -> xr.DataArray:\n    \"\"\"\n    Compute a monthly median and standard deviation climatology.\n\n    Assuming `cube` has dimensions [x, y, t, bands].\n    Filter to target_band.\n\n    This monthly climatology would normally have some \"temporal\" dimension\n    of length 12 (Jan, Feb, ..., Dec).\n    But here we retain the time (t) dimension as-is, broadcasting\n    the climatology values back to match each individual time step.\n\n    Arguments:\n        cube: xarray DataArray\n        context: user-provided arguments.\n\n    Returns:\n        xarray DataArray with dimensions [x, y, t, bands].\n        bands = [target_band, target_band_median, target_band_std]\n    \"\"\"\n    target_band = context[\"target_band\"]\n    baseline_start = context[\"baseline_start\"]\n    baseline_end = context[\"baseline_end\"]\n    std_min = context[\"std_min\"]\n    inspect(\n        message=f\"applying {LOG_CODE} to {target_band} with baseline={baseline_start} to {baseline_end} and std_min={std_min}\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    if BAND_DIM not in cube.dims:\n        raise ValueError(f\"Expected band dimension {BAND_DIM!r}, got dims {cube.dims!r}\")\n    if target_band not in cube.coords[BAND_DIM].values:\n        raise ValueError(f\"Band {target_band!r} not in {list(cube.coords[BAND_DIM].values)!r}\")\n\n    values = cube.sel({BAND_DIM: target_band}, drop=True)\n    t = cube.coords[\"t\"]\n    t_index = cube.indexes[\"t\"]\n    if isinstance(t_index, pd.DatetimeIndex):\n        t_dt = t_index\n    else:\n        inspect(\n            message=(\n                f\"{LOG_CODE}: t index is {type(t_index).__name__} \"\n                f\"(dtype={getattr(t_index, 'dtype', None)!r}), not DatetimeIndex; \"\n                \"parsing with pd.to_datetime\"\n            ),\n            code=LOG_CODE,\n            level=\"warning\",\n        )\n        t_dt = pd.to_datetime(t_index)\n    baseline_start_ts = pd.Timestamp(baseline_start)\n    baseline_end_ts = pd.Timestamp(baseline_end)\n    in_baseline = (t_dt >= baseline_start_ts) & (t_dt <= baseline_end_ts)\n    baseline = values.sel(t=t[in_baseline])\n\n    clim_median, clim_std = _monthly_climatology(baseline, std_min)\n    median_t = _broadcast_to_timesteps(clim_median, t)\n    std_t = _broadcast_to_timesteps(clim_std, t)\n\n    median_band = f\"{target_band}_median\"\n    std_band = f\"{target_band}_std\"\n    median_t = median_t.assign_coords(bands=median_band).expand_dims(BAND_DIM)\n    std_t = std_t.assign_coords(bands=std_band).expand_dims(BAND_DIM)\n    values_out = values.assign_coords(bands=target_band).expand_dims(BAND_DIM)\n\n    out = xr.concat(\n        [values_out, median_t, std_t],\n        dim=BAND_DIM,\n    )\n    return out.transpose(*cube.dims)\n\n\ndef apply_metadata(\n    metadata: CollectionMetadata, context: Context\n) -> CollectionMetadata:\n    \"\"\"\n    Returns the expected cube metadata, after applying this UDF, based on input metadata.\n    \"\"\"\n    target_band = context[\"target_band\"]\n    metadata = metadata.filter_bands([target_band])\n    metadata = metadata.append_band(\n        Band(\n            name=f\"{target_band}_median\",\n        )\n    )\n    metadata = metadata.append_band(\n        Band(\n            name=f\"{target_band}_std\",\n        )\n    )\n    return metadata\n",
+                "version": "3.11"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "reducedimension5": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "applydimension1"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement7": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 0
+              }
+            },
+            "arrayelement8": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 1
+              }
+            },
+            "subtract1": {
+              "process_id": "subtract",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement7"
+                },
+                "y": {
+                  "from_node": "arrayelement8"
+                }
+              }
+            },
+            "arrayelement9": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 2
+              }
+            },
+            "divide1": {
+              "process_id": "divide",
+              "arguments": {
+                "x": {
+                  "from_node": "subtract1"
+                },
+                "y": {
+                  "from_node": "arrayelement9"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "adddimension3": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension5"
+        },
+        "label": "NDTI_Z",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "mergecubes2": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "adddimension3"
+        },
+        "cube2": {
+          "from_node": "applydimension1"
+        }
+      }
+    },
+    "reducedimension6": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "mergecubes2"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement10": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 0
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "apply3": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension6"
+        },
+        "process": {
+          "process_graph": {
+            "runudf3": {
+              "process_id": "run_udf",
+              "arguments": {
+                "context": {
+                  "operator": "gte",
+                  "argument": {
+                    "from_parameter": "anomaly_z_threshold"
+                  }
+                },
+                "data": {
+                  "from_parameter": "x"
+                },
+                "runtime": "Python",
+                "udf": "\"\"\"\nThis is an openEO UDF (User Defined Function).\nhttps://open-eo.github.io/openeo-python-client/udf.html\n\nIt targets the \"python\" runtime, version 3.11.\nhttps://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python\n\"\"\"\n\nfrom typing import TypedDict\n\nimport numpy as np\nimport xarray as xr\n\nfrom openeo.udf import inspect\n\nLOG_CODE = \"binary_operator\"\n\n\nclass Context(TypedDict):\n    operator: str\n    argument: float | int\n\n\nOPERATORS = {\n    \"gte\": np.greater_equal,\n    \"gt\": np.greater,\n    \"lte\": np.less_equal,\n    \"lt\": np.less,\n}\n\n\ndef apply_datacube(cube: xr.DataArray, context: Context) -> xr.DataArray:\n    \"\"\"\n    Apply a binary (2 argument) operator to a cube.\n\n    Example:\n\n    ```\n    context.operator = \"gte\"\n    context.argument = 30\n    result = (cube >= 30)\n    ```\n\n    Why not just use native openEO processes?\n    Because there seems to be a bug related to Parameters.\n    https://forum.dataspace.copernicus.eu/t/udp-parameter-not-applied/5282/3\n\n    Arguments:\n        cube: xarray DataArray\n        context: user-provided arguments.\n    \"\"\"\n    # parse and validate context\n    operator_name = context[\"operator\"]\n    try:\n        operator = OPERATORS[operator_name]\n    except KeyError:\n        raise ValueError(f\"Invalid operator: {operator_name}\")\n\n    argument = context[\"argument\"]\n    if not isinstance(argument, float | int):\n        raise TypeError(f\"Invalid argument: {argument}\")\n\n    inspect(\n        message=f\"applying {operator_name}(cube, {argument})\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    return operator(cube, argument)\n",
+                "version": "3.11"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "convertdatatype2": {
+      "process_id": "convert_data_type",
+      "arguments": {
+        "data": {
+          "from_node": "apply3"
+        },
+        "data_type": "bool"
+      }
+    },
+    "adddimension4": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "convertdatatype2"
+        },
+        "label": "anomaly_ok",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "reducedimension7": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "mergecubes2"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement11": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 1
+              }
+            },
+            "arrayelement12": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 2
+              }
+            },
+            "divide2": {
+              "process_id": "divide",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement11"
+                },
+                "y": {
+                  "from_node": "arrayelement12"
+                }
+              }
+            },
+            "subtract2": {
+              "process_id": "subtract",
+              "arguments": {
+                "x": {
+                  "from_node": "divide2"
+                },
+                "y": 1.0
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "apply4": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension7"
+        },
+        "process": {
+          "process_graph": {
+            "runudf4": {
+              "process_id": "run_udf",
+              "arguments": {
+                "context": {
+                  "operator": "gte",
+                  "argument": {
+                    "from_parameter": "effect_threshold"
+                  }
+                },
+                "data": {
+                  "from_parameter": "x"
+                },
+                "runtime": "Python",
+                "udf": "\"\"\"\nThis is an openEO UDF (User Defined Function).\nhttps://open-eo.github.io/openeo-python-client/udf.html\n\nIt targets the \"python\" runtime, version 3.11.\nhttps://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python\n\"\"\"\n\nfrom typing import TypedDict\n\nimport numpy as np\nimport xarray as xr\n\nfrom openeo.udf import inspect\n\nLOG_CODE = \"binary_operator\"\n\n\nclass Context(TypedDict):\n    operator: str\n    argument: float | int\n\n\nOPERATORS = {\n    \"gte\": np.greater_equal,\n    \"gt\": np.greater,\n    \"lte\": np.less_equal,\n    \"lt\": np.less,\n}\n\n\ndef apply_datacube(cube: xr.DataArray, context: Context) -> xr.DataArray:\n    \"\"\"\n    Apply a binary (2 argument) operator to a cube.\n\n    Example:\n\n    ```\n    context.operator = \"gte\"\n    context.argument = 30\n    result = (cube >= 30)\n    ```\n\n    Why not just use native openEO processes?\n    Because there seems to be a bug related to Parameters.\n    https://forum.dataspace.copernicus.eu/t/udp-parameter-not-applied/5282/3\n\n    Arguments:\n        cube: xarray DataArray\n        context: user-provided arguments.\n    \"\"\"\n    # parse and validate context\n    operator_name = context[\"operator\"]\n    try:\n        operator = OPERATORS[operator_name]\n    except KeyError:\n        raise ValueError(f\"Invalid operator: {operator_name}\")\n\n    argument = context[\"argument\"]\n    if not isinstance(argument, float | int):\n        raise TypeError(f\"Invalid argument: {argument}\")\n\n    inspect(\n        message=f\"applying {operator_name}(cube, {argument})\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    return operator(cube, argument)\n",
+                "version": "3.11"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "convertdatatype3": {
+      "process_id": "convert_data_type",
+      "arguments": {
+        "data": {
+          "from_node": "apply4"
+        },
+        "data_type": "bool"
+      }
+    },
+    "adddimension5": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "convertdatatype3"
+        },
+        "label": "effect_ok",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "mergecubes3": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "adddimension4"
+        },
+        "cube2": {
+          "from_node": "adddimension5"
+        }
+      }
+    },
+    "reducedimension8": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "mergecubes3"
+        },
+        "dimension": "bands",
+        "reducer": {
+          "process_graph": {
+            "arrayelement13": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 0
+              }
+            },
+            "arrayelement14": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 1
+              }
+            },
+            "and1": {
+              "process_id": "and",
+              "arguments": {
+                "x": {
+                  "from_node": "arrayelement13"
+                },
+                "y": {
+                  "from_node": "arrayelement14"
+                }
+              }
+            },
+            "multiply1": {
+              "process_id": "multiply",
+              "arguments": {
+                "x": 1.0,
+                "y": {
+                  "from_node": "and1"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "aggregatetemporalperiod2": {
+      "process_id": "aggregate_temporal_period",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension8"
+        },
+        "period": "year",
+        "reducer": {
+          "process_graph": {
+            "sum1": {
+              "process_id": "sum",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "apply5": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "aggregatetemporalperiod2"
+        },
+        "process": {
+          "process_graph": {
+            "runudf5": {
+              "process_id": "run_udf",
+              "arguments": {
+                "context": {
+                  "operator": "gte",
+                  "argument": {
+                    "from_parameter": "min_months_per_year_for_hotspot"
+                  }
+                },
+                "data": {
+                  "from_parameter": "x"
+                },
+                "runtime": "Python",
+                "udf": "\"\"\"\nThis is an openEO UDF (User Defined Function).\nhttps://open-eo.github.io/openeo-python-client/udf.html\n\nIt targets the \"python\" runtime, version 3.11.\nhttps://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python\n\"\"\"\n\nfrom typing import TypedDict\n\nimport numpy as np\nimport xarray as xr\n\nfrom openeo.udf import inspect\n\nLOG_CODE = \"binary_operator\"\n\n\nclass Context(TypedDict):\n    operator: str\n    argument: float | int\n\n\nOPERATORS = {\n    \"gte\": np.greater_equal,\n    \"gt\": np.greater,\n    \"lte\": np.less_equal,\n    \"lt\": np.less,\n}\n\n\ndef apply_datacube(cube: xr.DataArray, context: Context) -> xr.DataArray:\n    \"\"\"\n    Apply a binary (2 argument) operator to a cube.\n\n    Example:\n\n    ```\n    context.operator = \"gte\"\n    context.argument = 30\n    result = (cube >= 30)\n    ```\n\n    Why not just use native openEO processes?\n    Because there seems to be a bug related to Parameters.\n    https://forum.dataspace.copernicus.eu/t/udp-parameter-not-applied/5282/3\n\n    Arguments:\n        cube: xarray DataArray\n        context: user-provided arguments.\n    \"\"\"\n    # parse and validate context\n    operator_name = context[\"operator\"]\n    try:\n        operator = OPERATORS[operator_name]\n    except KeyError:\n        raise ValueError(f\"Invalid operator: {operator_name}\")\n\n    argument = context[\"argument\"]\n    if not isinstance(argument, float | int):\n        raise TypeError(f\"Invalid argument: {argument}\")\n\n    inspect(\n        message=f\"applying {operator_name}(cube, {argument})\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    return operator(cube, argument)\n",
+                "version": "3.11"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "convertdatatype4": {
+      "process_id": "convert_data_type",
+      "arguments": {
+        "data": {
+          "from_node": "apply5"
+        },
+        "data_type": "bool"
+      }
+    },
+    "applyneighborhood1": {
+      "process_id": "apply_neighborhood",
+      "arguments": {
+        "data": {
+          "from_node": "convertdatatype4"
+        },
+        "overlap": [
+          {
+            "dimension": "x",
+            "value": 8,
+            "unit": "px"
+          },
+          {
+            "dimension": "y",
+            "value": 8,
+            "unit": "px"
+          }
+        ],
+        "process": {
+          "process_graph": {
+            "runudf6": {
+              "process_id": "run_udf",
+              "arguments": {
+                "context": {
+                  "min_pixels": {
+                    "from_parameter": "min_contiguous_pixels"
+                  }
+                },
+                "data": {
+                  "from_parameter": "data"
+                },
+                "runtime": "Python",
+                "udf": "\"\"\"\nThis is an openEO UDF (User Defined Function).\nhttps://open-eo.github.io/openeo-python-client/udf.html\n\nIt targets the \"python\" runtime, version 3.11.\nhttps://openeofed.dataspace.copernicus.eu/?discover=0&udf-runtime=Python\n\"\"\"\n\nfrom typing import TypedDict\n\nimport numpy as np\nimport scipy\nimport xarray as xr\n\nfrom openeo.udf import inspect\n\nLOG_CODE = \"connectivity_filter\"\n\n\nclass Context(TypedDict):\n    min_pixels: int\n\n\ndef format_bytes(bytes_val: float) -> str:\n    for unit in [\"B\", \"KB\", \"MB\", \"GB\", \"TB\"]:\n        if bytes_val < 1024:\n            return f\"{bytes_val:.2f} {unit}\"\n        bytes_val /= 1024\n    return f\"{bytes_val:.2f} PB\"\n\n\ndef small_region_mask(input_array: np.ndarray, min_pixels: int) -> np.ndarray:\n    \"\"\"\n    Use scipy.ndimage.label to detect features (clusters of non-zero valued pixels).\n\n    Arguments:\n        input_array: a 2D (spatial) boolean array / mask.\n            1 = valid pixel. 0 = ignored pixel.\n        min_pixels: once clustered into features, exclude features smaller than min_pixels\n\n    Returns:\n        a boolean mask of pixels to exclude, based on a minimum feature size.\n        1 = excluded pixel.\n    \"\"\"\n    if input_array.dtype != bool:\n        raise TypeError(\"input_array must have dtype bool\")\n    if min_pixels < 1:\n        raise ValueError(\"min_pixels must be 1 or greater\")\n\n    # 8-connectivity (diagonals count)\n    structure = np.ones((3, 3))\n\n    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.label.html#scipy.ndimage.label\n    # labelled_features has same shape as input_array.\n    # with clusters of pixels labelled by feature id (integer).\n    # feature id 0 = pixels not belonging to a feature, because their value in input_array is 0.\n    # the first cluster of pixels has feature id = 1.\n    labelled_features, _ = scipy.ndimage.label(input_array, structure=structure)\n\n    # 1D array.\n    # label_counts[i] is number of pixels with feature id = i.\n    label_counts = np.bincount(labelled_features.ravel())\n\n    # map each feature id to a bool (whether it should be masked).\n    # label_masked[i] is whether to mask feature id = i.\n    labels_masked = label_counts < min_pixels\n\n    # do not mask feature id = 0\n    labels_masked[0] = False\n\n    # numpy Integer array indexing https://numpy.org/doc/stable/user/basics.indexing.html#integer-array-indexing\n    # for each pixel in labelled_features (pixel value = feature id)\n    # do a positional lookup from labels_masked,\n    # essentially mapping from feature id to the corresponding true/false from labels_masked.\n    # mask has same shape as labelled_features, which has same shape as input_array\n    mask = labels_masked[labelled_features]\n\n    return mask\n\n\ndef filter_small_regions_2d(data: np.ndarray, min_pixels: int) -> np.ndarray:\n    \"\"\"Mask out pixels belonging to 8-connected components smaller than min_pixels.\"\"\"\n    exclude = small_region_mask(data, min_pixels)\n    return np.where(exclude, False, data)\n\n\ndef apply_datacube(cube: xr.DataArray, context: Context) -> xr.DataArray:\n    \"\"\"\n    Remove pixels in spatially disconnected components smaller than min_pixels.\n\n    Arguments:\n        cube: xarray DataArray with spatial dimensions \"x\" and \"y\".\n            Typically a boolean hotspot mask; non-bool values are treated as valid when non-zero.\n        context: user-provided arguments (min_pixels).\n    \"\"\"\n    inspect(\n        data=cube.sizes, message=\"Input cube dimensions\", code=LOG_CODE, level=\"debug\"\n    )\n    inspect(\n        message=f\"Size of cube = {format_bytes(cube.nbytes)}\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    if cube.dtype != bool:\n        inspect(\n            message=f\"expected dtype bool, got dtype {cube.dtype}\", code=LOG_CODE, level=\"warning\"\n        )\n        # try to convert from float\n        cube = cube.notnull() & (cube != 0)\n\n    if \"x\" not in cube.dims or \"y\" not in cube.dims:\n        raise ValueError(f'Expected spatial dims \"x\" and \"y\", got {cube.dims!r}')\n\n    min_pixels = context[\"min_pixels\"]\n    if not isinstance(min_pixels, int):\n        raise TypeError(\"min_pixels should be an int\")\n    if min_pixels < 1:\n        raise ValueError(\"min_pixels should be 1 or greater\")\n\n    total_pixels = cube.sizes[\"y\"] * cube.sizes[\"x\"]\n    if min_pixels >= total_pixels:\n        raise ValueError(\n            \"min_pixels should be less than or equal to the total number of pixels\"\n        )\n\n    inspect(\n        message=f\"Applying connectivity filter with min_pixels = {min_pixels}\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    filtered: xr.DataArray = xr.apply_ufunc(\n        filter_small_regions_2d,\n        cube,\n        input_core_dims=[[\"y\", \"x\"]],\n        output_core_dims=[[\"y\", \"x\"]],\n        vectorize=True,\n        kwargs={\"min_pixels\": min_pixels},\n    )\n\n    inspect(\n        message=f\"returned dtype = {filtered.dtype}\",\n        code=LOG_CODE,\n        level=\"debug\",\n    )\n\n    return filtered.transpose(*cube.dims)\n",
+                "version": "3.11"
+              },
+              "result": true
+            }
+          }
+        },
+        "size": [
+          {
+            "dimension": "x",
+            "value": 256,
+            "unit": "px"
+          },
+          {
+            "dimension": "y",
+            "value": 256,
+            "unit": "px"
+          }
+        ]
+      }
+    },
+    "adddimension6": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "applyneighborhood1"
+        },
+        "label": "hotspot",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "apply6": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "applyneighborhood1"
+        },
+        "process": {
+          "process_graph": {
+            "eq7": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "x"
+                },
+                "y": 0
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "mask3": {
+      "process_id": "mask",
+      "arguments": {
+        "data": {
+          "from_node": "aggregatetemporalperiod2"
+        },
+        "mask": {
+          "from_node": "apply6"
+        }
+      }
+    },
+    "adddimension7": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "mask3"
+        },
+        "label": "hotspot_exceedance_count",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "mergecubes4": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "adddimension6"
+        },
+        "cube2": {
+          "from_node": "adddimension7"
+        }
+      }
+    },
+    "aggregatetemporalperiod3": {
+      "process_id": "aggregate_temporal_period",
+      "arguments": {
+        "data": {
+          "from_node": "reducedimension5"
+        },
+        "period": "year",
+        "reducer": {
+          "process_graph": {
+            "count1": {
+              "process_id": "count",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "adddimension8": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "aggregatetemporalperiod3"
+        },
+        "label": "n_valid_months",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "mergecubes5": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "mergecubes4"
+        },
+        "cube2": {
+          "from_node": "adddimension8"
+        }
+      }
+    },
+    "apply7": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "aggregatetemporalperiod3"
+        },
+        "process": {
+          "process_graph": {
+            "gt1": {
+              "process_id": "gt",
+              "arguments": {
+                "x": {
+                  "from_parameter": "x"
+                },
+                "y": 0
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "adddimension9": {
+      "process_id": "add_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "apply7"
+        },
+        "label": "water_valid",
+        "name": "bands",
+        "type": "bands"
+      }
+    },
+    "mergecubes6": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "mergecubes5"
+        },
+        "cube2": {
+          "from_node": "adddimension9"
+        }
+      }
+    },
+    "filterbands2": {
+      "process_id": "filter_bands",
+      "arguments": {
+        "bands": [
+          "hotspot",
+          "hotspot_exceedance_count",
+          "water_valid"
+        ],
+        "data": {
+          "from_node": "mergecubes6"
+        }
+      }
+    },
+    "aggregatespatial1": {
+      "process_id": "aggregate_spatial",
+      "arguments": {
+        "data": {
+          "from_node": "filterbands2"
+        },
+        "geometries": {
+          "from_parameter": "upstream_and_downstream"
+        },
+        "reducer": {
+          "process_graph": {
+            "sum2": {
+              "process_id": "sum",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              }
+            },
+            "count2": {
+              "process_id": "count",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              }
+            },
+            "mean1": {
+              "process_id": "mean",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              }
+            },
+            "arraycreate1": {
+              "process_id": "array_create",
+              "arguments": {
+                "data": [
+                  {
+                    "from_node": "sum2"
+                  },
+                  {
+                    "from_node": "count2"
+                  },
+                  {
+                    "from_node": "mean1"
+                  }
+                ]
+              },
+              "result": true
+            }
+          }
+        }
+      },
+      "result": true
+    }
+  },
+  "id": "ndti_hotspots",
+  "summary": "Detect NDTI turbidity hotspots from Sentinel-2, then aggregate yearly hotspot and water-coverage statistics for upstream control zone and downstream influence zone.",
+  "description": "Computes monthly median Normalized Difference Turbidity Index (NDTI) from Sentinel-2 L2A. Persistent water is masked with Joint Research Centre (JRC) Global Surface Water (GSW). A baseline climatology (median and std) drives per-month exceedance tests. Pixels with enough exceedance months per year become hotspots. Small 8-connected components are removed. Returns a vector cube with bands: sum(hotspot), count(hotspot), avg(hotspot), sum(hotspot_exceedance_count), count(hotspot_exceedance_count), avg(hotspot_exceedance_count), sum(water_valid), count(water_valid), avg(water_valid). WARNING: depending on the requested download format, bands may be named differently - see: https://forum.dataspace.copernicus.eu/t/inconsistent-band-names-csv-parquet/5683.",
+  "returns": {
+    "description": "A vector cube",
+    "schema": {
+      "type": "object",
+      "subtype": "datacube",
+      "dimensions": [
+        {
+          "type": "geometry"
+        },
+        {
+          "type": "bands"
+        },
+        {
+          "type": "temporal",
+          "axis": "t"
+        }
+      ]
+    }
+  },
+  "parameters": [
+    {
+      "name": "upstream_and_downstream",
+      "description": "GeoJSON FeatureCollection containing the upstream control zone and downstream influence zone. Features should be polygons with a corresponding 'name' property.",
+      "schema": {
+        "type": "object",
+        "subtype": "geojson"
+      },
+      "default": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "Shape_Leng": 15000.0000094,
+              "name": "upstream control zone"
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [
+                    -41.94426813519947,
+                    -16.74089288672488
+                  ],
+                  [
+                    -41.944267670955604,
+                    -16.722916571478045
+                  ],
+                  [
+                    -41.9442461491783,
+                    -16.72248451673267
+                  ],
+                  [
+                    -41.94418181117056,
+                    -16.72205643070667
+                  ],
+                  [
+                    -41.94407524800815,
+                    -16.721636244303017
+                  ],
+                  [
+                    -41.943927438486895,
+                    -16.721227815858573
+                  ],
+                  [
+                    -41.94373974012472,
+                    -16.720834895715765
+                  ],
+                  [
+                    -41.94351387668668,
+                    -16.72046109178688
+                  ],
+                  [
+                    -41.94325192234828,
+                    -16.720109836427063
+                  ],
+                  [
+                    -41.94295628264254,
+                    -16.719784354920368
+                  ],
+                  [
+                    -41.93462289087894,
+                    -16.711451153969765
+                  ],
+                  [
+                    -41.93427979640754,
+                    -16.71114086705428
+                  ],
+                  [
+                    -41.933906131752146,
+                    -16.710865315895102
+                  ],
+                  [
+                    -41.933505667309184,
+                    -16.710627280748266
+                  ],
+                  [
+                    -41.933082443829164,
+                    -16.71042916331897
+                  ],
+                  [
+                    -41.93264073164778,
+                    -16.710272962534052
+                  ],
+                  [
+                    -41.932184987603016,
+                    -16.710160254378483
+                  ],
+                  [
+                    -41.93171981007259,
+                    -16.710092175998707
+                  ],
+                  [
+                    -41.931249892585164,
+                    -16.710069414233534
+                  ],
+                  [
+                    -41.9295687378319,
+                    -16.710069447999462
+                  ],
+                  [
+                    -41.929739275197306,
+                    -16.70996808325736
+                  ],
+                  [
+                    -41.93011289596888,
+                    -16.709692574706427
+                  ],
+                  [
+                    -41.930455953188506,
+                    -16.70938233710961
+                  ],
+                  [
+                    -41.93462263939603,
+                    -16.705215601601015
+                  ],
+                  [
+                    -41.93491825760413,
+                    -16.704890099300446
+                  ],
+                  [
+                    -41.93518018751561,
+                    -16.70453882125612
+                  ],
+                  [
+                    -41.935406023791025,
+                    -16.70416499351068
+                  ],
+                  [
+                    -41.93559369260474,
+                    -16.70377204918539
+                  ],
+                  [
+                    -41.93574147068584,
+                    -16.70336359694743
+                  ],
+                  [
+                    -41.93584800113798,
+                    -16.702943387865442
+                  ],
+                  [
+                    -41.93591230589297,
+                    -16.702515280957744
+                  ],
+                  [
+                    -41.935933794684075,
+                    -16.702083207749876
+                  ],
+                  [
+                    -41.93591227045696,
+                    -16.701651136167047
+                  ],
+                  [
+                    -41.93584793116886,
+                    -16.70122303409324
+                  ],
+                  [
+                    -41.93574136795998,
+                    -16.70080283293155
+                  ],
+                  [
+                    -41.93559355971408,
+                    -16.700394391500662
+                  ],
+                  [
+                    -41.93540586405889,
+                    -16.70000146059889
+                  ],
+                  [
+                    -41.93518000488908,
+                    -16.699627648561155
+                  ],
+                  [
+                    -41.93491805652691,
+                    -16.699276388125178
+                  ],
+                  [
+                    -41.93462242466627,
+                    -16.698950904911133
+                  ],
+                  [
+                    -41.93045572805555,
+                    -16.694784304757977
+                  ],
+                  [
+                    -41.9301126673224,
+                    -16.694474055409245
+                  ],
+                  [
+                    -41.92973904471718,
+                    -16.6941985391322
+                  ],
+                  [
+                    -41.929338629761425,
+                    -16.69396053549867
+                  ],
+                  [
+                    -41.92891546222348,
+                    -16.6937624456089
+                  ],
+                  [
+                    -41.928473811364356,
+                    -16.693606267872998
+                  ],
+                  [
+                    -41.92801813287087,
+                    -16.69349357785502
+                  ],
+                  [
+                    -41.92755302390999,
+                    -16.693425512382515
+                  ],
+                  [
+                    -41.9270831767578,
+                    -16.693402758081906
+                  ],
+                  [
+                    -41.914583471001635,
+                    -16.693402806461513
+                  ],
+                  [
+                    -41.9141136270701,
+                    -16.693425564352538
+                  ],
+                  [
+                    -41.913648522092444,
+                    -16.69349363321052
+                  ],
+                  [
+                    -41.91319284831546,
+                    -16.693606326262397
+                  ],
+                  [
+                    -41.91275120284727,
+                    -16.693762506541923
+                  ],
+                  [
+                    -41.91232804128862,
+                    -16.69396059835972
+                  ],
+                  [
+                    -41.911927632790785,
+                    -16.69419860319851
+                  ],
+                  [
+                    -41.9115540169929,
+                    -16.69447411987309
+                  ],
+                  [
+                    -41.91121096327299,
+                    -16.694784368751936
+                  ],
+                  [
+                    -41.90842580249183,
+                    -16.69756952964311
+                  ],
+                  [
+                    -41.90208342183671,
+                    -16.697569524518972
+                  ],
+                  [
+                    -41.90208322636208,
+                    -16.706597141927908
+                  ],
+                  [
+                    -41.9104167549055,
+                    -16.706597173956375
+                  ],
+                  [
+                    -41.91088658353144,
+                    -16.70657439936072
+                  ],
+                  [
+                    -41.91135167187781,
+                    -16.706506320660253
+                  ],
+                  [
+                    -41.91180732809461,
+                    -16.706393624583363
+                  ],
+                  [
+                    -41.912248955492714,
+                    -16.70623744796359
+                  ],
+                  [
+                    -41.91267209892523,
+                    -16.70603936627093
+                  ],
+                  [
+                    -41.913072489739896,
+                    -16.705801377717044
+                  ],
+                  [
+                    -41.91344608884872,
+                    -16.70552588309496
+                  ],
+                  [
+                    -41.91378912747973,
+                    -16.70521566155667
+                  ],
+                  [
+                    -41.91657420616234,
+                    -16.702430583721668
+                  ],
+                  [
+                    -41.92043121279881,
+                    -16.702430642537337
+                  ],
+                  [
+                    -41.92026074724234,
+                    -16.70253196838962
+                  ],
+                  [
+                    -41.919887118149134,
+                    -16.702807495174635
+                  ],
+                  [
+                    -41.919544053570924,
+                    -16.70311775385602
+                  ],
+                  [
+                    -41.91689058745358,
+                    -16.705771223187067
+                  ],
+                  [
+                    -41.91537740632042,
+                    -16.70728435213135
+                  ],
+                  [
+                    -41.91508178133277,
+                    -16.707609828239782
+                  ],
+                  [
+                    -41.91481983959915,
+                    -16.707961078859245
+                  ],
+                  [
+                    -41.91459398654247,
+                    -16.708334878645392
+                  ],
+                  [
+                    -41.91440629624253,
+                    -16.70872779518541
+                  ],
+                  [
+                    -41.9142584923863,
+                    -16.709136220512203
+                  ],
+                  [
+                    -41.914151932434045,
+                    -16.709556404230874
+                  ],
+                  [
+                    -41.91408759514673,
+                    -16.709984487953612
+                  ],
+                  [
+                    -41.9140660715896,
+                    -16.710416540726925
+                  ],
+                  [
+                    -41.91408755969485,
+                    -16.710848595125913
+                  ],
+                  [
+                    -41.9141518624336,
+                    -16.711276683684407
+                  ],
+                  [
+                    -41.91425838961443,
+                    -16.711696875326428
+                  ],
+                  [
+                    -41.914406163292334,
+                    -16.712105311464466
+                  ],
+                  [
+                    -41.91459382673876,
+                    -16.7124982414332
+                  ],
+                  [
+                    -41.914819656890785,
+                    -16.7128720569331
+                  ],
+                  [
+                    -41.91508158016548,
+                    -16.71322332516769
+                  ],
+                  [
+                    -41.91537719149453,
+                    -16.713548820369986
+                  ],
+                  [
+                    -41.91954382800436,
+                    -16.717715553894987
+                  ],
+                  [
+                    -41.91988689361101,
+                    -16.71802580455076
+                  ],
+                  [
+                    -41.920260526143664,
+                    -16.718301326420757
+                  ],
+                  [
+                    -41.920660956255716,
+                    -16.718539339791885
+                  ],
+                  [
+                    -41.92108414419191,
+                    -16.718737443348754
+                  ],
+                  [
+                    -41.921525820546584,
+                    -16.718893638405582
+                  ],
+                  [
+                    -41.92198152934114,
+                    -16.7190063490759
+                  ],
+                  [
+                    -41.92244667298608,
+                    -16.71907443817645
+                  ],
+                  [
+                    -41.92291655867347,
+                    -16.719097218704405
+                  ],
+                  [
+                    -41.92925873870858,
+                    -16.719097273747913
+                  ],
+                  [
+                    -41.93489898621148,
+                    -16.72473764853717
+                  ],
+                  [
+                    -41.93489850455573,
+                    -16.743749905626572
+                  ],
+                  [
+                    -41.93491999448803,
+                    -16.744181913133414
+                  ],
+                  [
+                    -41.93498429670991,
+                    -16.74460995593265
+                  ],
+                  [
+                    -41.93509082118129,
+                    -16.74503010434098
+                  ],
+                  [
+                    -41.93523859022451,
+                    -16.745438501122454
+                  ],
+                  [
+                    -41.93542624748962,
+                    -16.74583139690096
+                  ],
+                  [
+                    -41.93565207039713,
+                    -16.746205184583555
+                  ],
+                  [
+                    -41.93591398594388,
+                    -16.7465564324784
+                  ],
+                  [
+                    -41.93620958972768,
+                    -16.746881915803293
+                  ],
+                  [
+                    -41.94037622666588,
+                    -16.75104864753429
+                  ],
+                  [
+                    -41.94071937774776,
+                    -16.751358971198545
+                  ],
+                  [
+                    -41.9410931124814,
+                    -16.751634558490338
+                  ],
+                  [
+                    -41.941493659483555,
+                    -16.75187262829515
+                  ],
+                  [
+                    -41.94191697674191,
+                    -16.75207077808787
+                  ],
+                  [
+                    -41.942358792406914,
+                    -16.752227008183308
+                  ],
+                  [
+                    -41.94281464790555,
+                    -16.752339741921418
+                  ],
+                  [
+                    -41.94327994294144,
+                    -16.752407841583146
+                  ],
+                  [
+                    -41.94374998192714,
+                    -16.752430619876236
+                  ],
+                  [
+                    -41.944220021379444,
+                    -16.752407846874586
+                  ],
+                  [
+                    -41.944685317798935,
+                    -16.752339752341385
+                  ],
+                  [
+                    -41.94514117555031,
+                    -16.752227023412093
+                  ],
+                  [
+                    -41.94558299425945,
+                    -16.75207079766075
+                  ],
+                  [
+                    -41.94600631524871,
+                    -16.75187265161967
+                  ],
+                  [
+                    -41.94640686654112,
+                    -16.751634584868146
+                  ],
+                  [
+                    -41.94678060597896,
+                    -16.751358999851103
+                  ],
+                  [
+                    -41.94712376202126,
+                    -16.751048677631342
+                  ],
+                  [
+                    -41.94990842977861,
+                    -16.748264010490296
+                  ],
+                  [
+                    -41.95425821710883,
+                    -16.748264027061968
+                  ],
+                  [
+                    -41.95704279902994,
+                    -16.751048646477944
+                  ],
+                  [
+                    -41.96120938925471,
+                    -16.755215333114403
+                  ],
+                  [
+                    -41.96155254679612,
+                    -16.755525663046747
+                  ],
+                  [
+                    -41.96192628904266,
+                    -16.75580125704038
+                  ],
+                  [
+                    -41.96232684460902,
+                    -16.756039333967905
+                  ],
+                  [
+                    -41.96275017147557,
+                    -16.756237491279737
+                  ],
+                  [
+                    -41.96319199777947,
+                    -16.756393729254306
+                  ],
+                  [
+                    -41.96364786492769,
+                    -16.75650647118335
+                  ],
+                  [
+                    -41.964113172596505,
+                    -16.756574579287847
+                  ],
+                  [
+                    -41.96458322516313,
+                    -16.756597366204172
+                  ],
+                  [
+                    -41.97092470773924,
+                    -16.756597421285136
+                  ],
+                  [
+                    -41.971524366349634,
+                    -16.757197096846475
+                  ],
+                  [
+                    -41.978272403143066,
+                    -16.750933099615114
+                  ],
+                  [
+                    -41.97629061679596,
+                    -16.748951329484044
+                  ],
+                  [
+                    -41.97594743218814,
+                    -16.748640973104052
+                  ],
+                  [
+                    -41.97557366113609,
+                    -16.748365358774922
+                  ],
+                  [
+                    -41.975173075908764,
+                    -16.74812726797971
+                  ],
+                  [
+                    -41.97474971933162,
+                    -16.747929103494602
+                  ],
+                  [
+                    -41.974307863988166,
+                    -16.747772865145468
+                  ],
+                  [
+                    -41.973851969105354,
+                    -16.747660129630923
+                  ],
+                  [
+                    -41.97338663555734,
+                    -16.747592034615227
+                  ],
+                  [
+                    -41.97291655944173,
+                    -16.747569267251322
+                  ],
+                  [
+                    -41.96657517144826,
+                    -16.747569322360203
+                  ],
+                  [
+                    -41.96379047166404,
+                    -16.744784659762356
+                  ],
+                  [
+                    -41.95962368268091,
+                    -16.740617966768653
+                  ],
+                  [
+                    -41.95928052064423,
+                    -16.740307629956504
+                  ],
+                  [
+                    -41.95890677630723,
+                    -16.740032033391895
+                  ],
+                  [
+                    -41.958506221462706,
+                    -16.73979395822604
+                  ],
+                  [
+                    -41.95808289840809,
+                    -16.739595806945545
+                  ],
+                  [
+                    -41.95764107915459,
+                    -16.739439579133194
+                  ],
+                  [
+                    -41.95718522232069,
+                    -16.739326851294635
+                  ],
+                  [
+                    -41.95671992814452,
+                    -16.739258760954023
+                  ],
+                  [
+                    -41.956249892069074,
+                    -16.73923599517917
+                  ],
+                  [
+                    -41.94791675467086,
+                    -16.73923602792526
+                  ],
+                  [
+                    -41.94744672026798,
+                    -16.739258797413985
+                  ],
+                  [
+                    -41.946981428541385,
+                    -16.739326891396004
+                  ],
+                  [
+                    -41.9465255749169,
+                    -16.73943962265584
+                  ],
+                  [
+                    -41.94608375958597,
+                    -16.7395958535286
+                  ],
+                  [
+                    -41.945660441093096,
+                    -16.73979400738015
+                  ],
+                  [
+                    -41.94525989135159,
+                    -16.74003208451626
+                  ],
+                  [
+                    -41.944886152541216,
+                    -16.74030768236002
+                  ],
+                  [
+                    -41.94454299632227,
+                    -16.7406180196941
+                  ],
+                  [
+                    -41.94426813519947,
+                    -16.74089288672488
+                  ]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "Shape_Leng": 15000.0000175,
+              "name": "downstream influence zone"
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [
+                    -41.8999074440619,
+                    -16.69756954343811
+                  ],
+                  [
+                    -41.89295555500432,
+                    -16.690617749928833
+                  ],
+                  [
+                    -41.89261252184996,
+                    -16.690307516073357
+                  ],
+                  [
+                    -41.892238929646666,
+                    -16.690032012477612
+                  ],
+                  [
+                    -41.89183854744304,
+                    -16.689794018462273
+                  ],
+                  [
+                    -41.89141541449873,
+                    -16.689595934923922
+                  ],
+                  [
+                    -41.8909737995373,
+                    -16.689439760119694
+                  ],
+                  [
+                    -41.89051815768657,
+                    -16.689327069513794
+                  ],
+                  [
+                    -41.89005308554069,
+                    -16.689258999888768
+                  ],
+                  [
+                    -41.889583274796834,
+                    -16.689236237881914
+                  ],
+                  [
+                    -41.88541670604176,
+                    -16.689236254330893
+                  ],
+                  [
+                    -41.8849468930068,
+                    -16.689259020372155
+                  ],
+                  [
+                    -41.88448181944287,
+                    -16.68932709456248
+                  ],
+                  [
+                    -41.88402617711489,
+                    -16.68943979009864
+                  ],
+                  [
+                    -41.88358456265197,
+                    -16.68959597002879
+                  ],
+                  [
+                    -41.88316143118522,
+                    -16.68979405872206
+                  ],
+                  [
+                    -41.88276105141193,
+                    -16.690032057762537
+                  ],
+                  [
+                    -41.88238746253906,
+                    -16.69030756610766
+                  ],
+                  [
+                    -41.88204443354,
+                    -16.690617804307436
+                  ],
+                  [
+                    -41.875092596941755,
+                    -16.697569641395724
+                  ],
+                  [
+                    -41.874907439221616,
+                    -16.69756964216737
+                  ],
+                  [
+                    -41.87343339483902,
+                    -16.696095630696846
+                  ],
+                  [
+                    -41.873433382200986,
+                    -16.695577826514196
+                  ],
+                  [
+                    -41.876292654453934,
+                    -16.69271170068888
+                  ],
+                  [
+                    -41.8765876510643,
+                    -16.69238612788839
+                  ],
+                  [
+                    -41.87684898221613,
+                    -16.69203485236913
+                  ],
+                  [
+                    -41.87707425147665,
+                    -16.691661095568765
+                  ],
+                  [
+                    -41.87726139316485,
+                    -16.69126828508215
+                  ],
+                  [
+                    -41.87740869129076,
+                    -16.69086002322412
+                  ],
+                  [
+                    -41.87751479528599,
+                    -16.690440053990272
+                  ],
+                  [
+                    -41.87757873238166,
+                    -16.690012228719088
+                  ],
+                  [
+                    -41.877599916520424,
+                    -16.689580470770125
+                  ],
+                  [
+                    -41.877578153721124,
+                    -16.68914873954265
+                  ],
+                  [
+                    -41.87751364384729,
+                    -16.688720994164658
+                  ],
+                  [
+                    -41.87740697876362,
+                    -16.688301157185272
+                  ],
+                  [
+                    -41.877259136897756,
+                    -16.687893078603615
+                  ],
+                  [
+                    -41.8770714742576,
+                    -16.68750050056407
+                  ],
+                  [
+                    -41.87684571198691,
+                    -16.687127023041437
+                  ],
+                  [
+                    -41.87658392057367,
+                    -16.68677607083092
+                  ],
+                  [
+                    -41.87628850085638,
+                    -16.686450862145275
+                  ],
+                  [
+                    -41.865099517753805,
+                    -16.675262236789088
+                  ],
+                  [
+                    -41.865099504953925,
+                    -16.67473789124625
+                  ],
+                  [
+                    -41.872121531335665,
+                    -16.66771570590572
+                  ],
+                  [
+                    -41.872417124916915,
+                    -16.667390217209896
+                  ],
+                  [
+                    -41.87267903536925,
+                    -16.667038947678396
+                  ],
+                  [
+                    -41.872904857156755,
+                    -16.666665123777285
+                  ],
+                  [
+                    -41.87309251626314,
+                    -16.66627217912648
+                  ],
+                  [
+                    -41.87324028923748,
+                    -16.66586372295767
+                  ],
+                  [
+                    -41.87334681901813,
+                    -16.665443506959374
+                  ],
+                  [
+                    -41.87341112738989,
+                    -16.665015390814165
+                  ],
+                  [
+                    -41.87343262396004,
+                    -16.664583306744554
+                  ],
+                  [
+                    -41.873432319759516,
+                    -16.652083255510966
+                  ],
+                  [
+                    -41.87341079822265,
+                    -16.651651117522036
+                  ],
+                  [
+                    -41.87334645767625,
+                    -16.65122295083924
+                  ],
+                  [
+                    -41.87323988951266,
+                    -16.650802689064594
+                  ],
+                  [
+                    -41.87309207306028,
+                    -16.65039419314936
+                  ],
+                  [
+                    -41.872904366576094,
+                    -16.650001215923965
+                  ],
+                  [
+                    -41.87267849475788,
+                    -16.649627367622276
+                  ],
+                  [
+                    -41.87241653289093,
+                    -16.64927608271679
+                  ],
+                  [
+                    -41.87212088777552,
+                    -16.64895058836939
+                  ],
+                  [
+                    -41.86509870577815,
+                    -16.64192863152925
+                  ],
+                  [
+                    -41.865098647023856,
+                    -16.639583273041158
+                  ],
+                  [
+                    -41.86507712753521,
+                    -16.639151124925846
+                  ],
+                  [
+                    -41.865012789591944,
+                    -16.638722948281835
+                  ],
+                  [
+                    -41.86490622459738,
+                    -16.638302677035977
+                  ],
+                  [
+                    -41.86475841190867,
+                    -16.637894172455574
+                  ],
+                  [
+                    -41.864570709828655,
+                    -16.6375011876733
+                  ],
+                  [
+                    -41.86434484311681,
+                    -16.637127333206585
+                  ],
+                  [
+                    -41.86408288713452,
+                    -16.636776043788302
+                  ],
+                  [
+                    -41.8637872487707,
+                    -16.636450546813254
+                  ],
+                  [
+                    -41.85962055186737,
+                    -16.632283945767693
+                  ],
+                  [
+                    -41.859277653950436,
+                    -16.63197383659377
+                  ],
+                  [
+                    -41.85890422524221,
+                    -16.631698446629198
+                  ],
+                  [
+                    -41.85850403156588,
+                    -16.63146055288587
+                  ],
+                  [
+                    -41.85808110859035,
+                    -16.631262554244575
+                  ],
+                  [
+                    -41.85763972113637,
+                    -16.631106447270064
+                  ],
+                  [
+                    -41.85718432017423,
+                    -16.630993806083016
+                  ],
+                  [
+                    -41.8567194979464,
+                    -16.63092576649161
+                  ],
+                  [
+                    -41.85624994166758,
+                    -16.630903014542483
+                  ],
+                  [
+                    -41.85407281476961,
+                    -16.630903033544346
+                  ],
+                  [
+                    -41.845858275217054,
+                    -16.62268876741608
+                  ],
+                  [
+                    -41.839117590003696,
+                    -16.628954173316963
+                  ],
+                  [
+                    -41.84871286742689,
+                    -16.638549484144985
+                  ],
+                  [
+                    -41.84905574528407,
+                    -16.638859556236515
+                  ],
+                  [
+                    -41.849429150793235,
+                    -16.63913491492176
+                  ],
+                  [
+                    -41.84982931902504,
+                    -16.6393727837017
+                  ],
+                  [
+                    -41.850252215145844,
+                    -16.639570764073806
+                  ],
+                  [
+                    -41.85069357510313,
+                    -16.639726859721833
+                  ],
+                  [
+                    -41.85114894862474,
+                    -16.639839496650332
+                  ],
+                  [
+                    -41.851613744097826,
+                    -16.63990753906043
+                  ],
+                  [
+                    -41.85208327487481,
+                    -16.639930300806697
+                  ],
+                  [
+                    -41.854260287425255,
+                    -16.63993032013858
+                  ],
+                  [
+                    -41.85573466335969,
+                    -16.641404729338447
+                  ],
+                  [
+                    -41.85573460386531,
+                    -16.6437499390464
+                  ],
+                  [
+                    -41.855756098054584,
+                    -16.644182056878613
+                  ],
+                  [
+                    -41.85582040625352,
+                    -16.644610206167595
+                  ],
+                  [
+                    -41.85592693799101,
+                    -16.64503045375805
+                  ],
+                  [
+                    -41.85607471490074,
+                    -16.64543893905522
+                  ],
+                  [
+                    -41.85626237969862,
+                    -16.64583190949063
+                  ],
+                  [
+                    -41.856488208641835,
+                    -16.646205754996583
+                  ],
+                  [
+                    -41.85675012735567,
+                    -16.646557041172358
+                  ],
+                  [
+                    -41.85704572988265,
+                    -16.646882540837673
+                  ],
+                  [
+                    -41.864067665819626,
+                    -16.65390469907047
+                  ],
+                  [
+                    -41.864067449637545,
+                    -16.66276211850701
+                  ],
+                  [
+                    -41.85704528486736,
+                    -16.669784121748783
+                  ],
+                  [
+                    -41.85674964401318,
+                    -16.67010960859606
+                  ],
+                  [
+                    -41.85648768729336,
+                    -16.670460881051945
+                  ],
+                  [
+                    -41.85626182111506,
+                    -16.670834712434797
+                  ],
+                  [
+                    -41.85607412040837,
+                    -16.671227668832085
+                  ],
+                  [
+                    -41.85592630956216,
+                    -16.671636140639393
+                  ],
+                  [
+                    -41.85581974657812,
+                    -16.672056375713638
+                  ],
+                  [
+                    -41.85575541058898,
+                    -16.672484513836135
+                  ],
+                  [
+                    -41.855733892855426,
+                    -16.672916622169083
+                  ],
+                  [
+                    -41.85573379124024,
+                    -16.677083271988923
+                  ],
+                  [
+                    -41.855755283471666,
+                    -16.677515331110346
+                  ],
+                  [
+                    -41.85581958576741,
+                    -16.67794342328207
+                  ],
+                  [
+                    -41.85592610786876,
+                    -16.678363616922933
+                  ],
+                  [
+                    -41.85607387175958,
+                    -16.678772052963797
+                  ],
+                  [
+                    -41.85626152063802,
+                    -16.679164980289862
+                  ],
+                  [
+                    -41.85648733136795,
+                    -16.679538790192563
+                  ],
+                  [
+                    -41.85674923029585,
+                    -16.6798900495145
+                  ],
+                  [
+                    -41.85704481228827,
+                    -16.68021553218301
+                  ],
+                  [
+                    -41.86641228614548,
+                    -16.689583419906366
+                  ],
+                  [
+                    -41.86537799028918,
+                    -16.69061767618754
+                  ],
+                  [
+                    -41.86508237232155,
+                    -16.690943146330497
+                  ],
+                  [
+                    -41.864820436226815,
+                    -16.69129439422495
+                  ],
+                  [
+                    -41.86459458766404,
+                    -16.691668194164457
+                  ],
+                  [
+                    -41.86440690091988,
+                    -16.692061113322982
+                  ],
+                  [
+                    -41.8642590998548,
+                    -16.692469543276573
+                  ],
+                  [
+                    -41.86415254206564,
+                    -16.692889733138095
+                  ],
+                  [
+                    -41.864088206410365,
+                    -16.693317824000705
+                  ],
+                  [
+                    -41.864066684009664,
+                    -16.693749884374096
+                  ],
+                  [
+                    -41.86406668362391,
+                    -16.693759775024787
+                  ],
+                  [
+                    -41.864066581934885,
+                    -16.69791660466434
+                  ],
+                  [
+                    -41.86408807511219,
+                    -16.69834865098713
+                  ],
+                  [
+                    -41.86415238030687,
+                    -16.69877673076065
+                  ],
+                  [
+                    -41.86425890727569,
+                    -16.699196912795482
+                  ],
+                  [
+                    -41.86440667802726,
+                    -16.69960533840185
+                  ],
+                  [
+                    -41.86459433579295,
+                    -16.699998256825847
+                  ],
+                  [
+                    -41.864820157477055,
+                    -16.700372059695713
+                  ],
+                  [
+                    -41.865082069472194,
+                    -16.70072331416122
+                  ],
+                  [
+                    -41.865377666695075,
+                    -16.70104879442228
+                  ],
+                  [
+                    -41.86954430331343,
+                    -16.705215528266717
+                  ],
+                  [
+                    -41.86988733215716,
+                    -16.705525746564696
+                  ],
+                  [
+                    -41.870260921800146,
+                    -16.70580123860913
+                  ],
+                  [
+                    -41.87066130353976,
+                    -16.706039225142835
+                  ],
+                  [
+                    -41.87108443833518,
+                    -16.70623730525487
+                  ],
+                  [
+                    -41.87152605755599,
+                    -16.706393480607083
+                  ],
+                  [
+                    -41.8719817060495,
+                    -16.706506175599138
+                  ],
+                  [
+                    -41.87244678709183,
+                    -16.706574253268656
+                  ],
+                  [
+                    -41.87291660876907,
+                    -16.706597026765643
+                  ],
+                  [
+                    -41.877083373339595,
+                    -16.706597042478833
+                  ],
+                  [
+                    -41.877553184114724,
+                    -16.706574273686467
+                  ],
+                  [
+                    -41.878018255373206,
+                    -16.706506202909218
+                  ],
+                  [
+                    -41.87847389552554,
+                    -16.706393516782043
+                  ],
+                  [
+                    -41.87891550813084,
+                    -16.706237352016213
+                  ],
+                  [
+                    -41.879338638274845,
+                    -16.706039283932043
+                  ],
+                  [
+                    -41.879739017519206,
+                    -16.705801310565963
+                  ],
+                  [
+                    -41.880112606968055,
+                    -16.705525832512336
+                  ],
+                  [
+                    -41.880455638017196,
+                    -16.70521562870361
+                  ],
+                  [
+                    -41.88740750480234,
+                    -16.698263764785693
+                  ],
+                  [
+                    -41.88759249297492,
+                    -16.698263765518163
+                  ],
+                  [
+                    -41.89454427600733,
+                    -16.705215642999494
+                  ],
+                  [
+                    -41.89488731047988,
+                    -16.705525858054173
+                  ],
+                  [
+                    -41.89526090486492,
+                    -16.705801346981527
+                  ],
+                  [
+                    -41.89566129054802,
+                    -16.706039330656527
+                  ],
+                  [
+                    -41.89608442859438,
+                    -16.706237408284267
+                  ],
+                  [
+                    -41.896526050494955,
+                    -16.706393581624226
+                  ],
+                  [
+                    -41.89698170123105,
+                    -16.7065062751538
+                  ],
+                  [
+                    -41.89744678422234,
+                    -16.706574351966903
+                  ],
+                  [
+                    -41.897916607705014,
+                    -16.70659712524751
+                  ],
+                  [
+                    -41.902083372859735,
+                    -16.706597141929223
+                  ],
+                  [
+                    -41.902083275345966,
+                    -16.69756952451881
+                  ],
+                  [
+                    -41.8999074440619,
+                    -16.69756954343811
+                  ]
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "optional": true
+    },
+    {
+      "name": "temporal_extent",
+      "description": "Temporal extent specified as two-element array with start and end date/date-time.",
+      "schema": {
+        "type": "array",
+        "subtype": "temporal-interval",
+        "uniqueItems": true,
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "anyOf": [
+            {
+              "type": "string",
+              "subtype": "date-time",
+              "format": "date-time"
+            },
+            {
+              "type": "string",
+              "subtype": "date",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "default": [
+        "2018-01-01",
+        "2025-12-31"
+      ],
+      "optional": true
+    },
+    {
+      "name": "baseline_start",
+      "description": "Start of the baseline period for climatology",
+      "schema": {
+        "type": "string",
+        "subtype": "date",
+        "format": "date"
+      },
+      "default": "2018-01-01",
+      "optional": true
+    },
+    {
+      "name": "baseline_end",
+      "description": "End of the baseline period for climatology (inclusive).",
+      "schema": {
+        "type": "string",
+        "subtype": "date",
+        "format": "date"
+      },
+      "default": "2022-12-31",
+      "optional": true
+    },
+    {
+      "name": "water_occurrence_threshold",
+      "description": "Minimum Joint Research Centre (JRC) Global Surface Water (GSW) occurrence (percent) for a pixel to be treated as water.",
+      "schema": {
+        "type": "number"
+      },
+      "default": 10,
+      "optional": true
+    },
+    {
+      "name": "anomaly_z_threshold",
+      "description": "For a pixel-month to count as anomalous, its NDTI Z-score must be greater than or equal to this value.",
+      "schema": {
+        "type": "number"
+      },
+      "default": 2,
+      "optional": true
+    },
+    {
+      "name": "effect_threshold",
+      "description": "For a pixel-month to count as anomalous, NDTI must be at least (1 + effect_threshold) times the climatological monthly median.",
+      "schema": {
+        "type": "number"
+      },
+      "default": 0.4,
+      "optional": true
+    },
+    {
+      "name": "min_months_per_year_for_hotspot",
+      "description": "Minimum number of anomalous months in a calendar year for a pixel to be flagged as a hotspot that year.",
+      "schema": {
+        "type": "integer"
+      },
+      "default": 2,
+      "optional": true
+    },
+    {
+      "name": "min_contiguous_pixels",
+      "description": "Minimum 8-connected component size (pixels) for hotspot pixels. Isolated pixels are excluded.",
+      "schema": {
+        "type": "integer"
+      },
+      "default": 6,
+      "optional": true
+    }
+  ]
+}
